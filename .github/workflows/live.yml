@@ -2,9 +2,9 @@ name: YouTube Live Stream
 
 on:
   workflow_dispatch:
-  # يمكنك أيضاً جعله يعمل تلقائياً كل فترة إذا أردت، أو إبقائه يدويًا
-  # schedule:
-  #   - cron: '0 */5 * * *'
+  schedule:
+    # إعادة تشغيل البث تلقائياً كل 5 ساعات
+    - cron: '0 */5 * * *'
 
 jobs:
   live:
@@ -18,11 +18,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
-      - name: Start Live Stream with Playlist
+      - name: Start Live Stream
         run: |
-          # تشغيل الفيديوهات من ملف القائمة بشكل متكرر لا ينتهي
           ffmpeg -re -stream_loop -1 -f concat -safe 0 -i playlist.txt \
-          -c:v libx264 -preset veryfast -b:v 3000k -maxrate 3000k -bufsize 6000k \
-          -pix_fmt yuv420p -g 60 \
+          -t 18000 \
+          -c:v libx264 -preset ultrafast -tune zerolatency -b:v 2500k -maxrate 2500k -bufsize 5000k \
+          -pix_fmt yuv420p -g 60 -r 30 \
           -c:a aac -b:a 128k -ar 44100 \
           -f flv rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}
