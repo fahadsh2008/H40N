@@ -18,8 +18,8 @@ jobs:
 
       - name: Create Video List
         run: |
-          # إنشاء قائمة بجميع ملفات الفيديو mp4 الموجودة في المستودع
-          find . -maxdepth 2 -type f -name "*.mp4" | sed "s/^/file '/;s/$/'/" > playlist.txt
+          # استبعاد break.mp4 وترتيب الفيديوهات تصاعدياً بالشكل الصحيح حتى 26 وما فوق
+          find . -maxdepth 2 -type f -name "*.mp4" ! -name "break.mp4" | sort -V | sed "s/^/file '/;s/$/'/" > playlist.txt
           cat playlist.txt
 
       - name: Start Live Stream
