@@ -9,7 +9,7 @@ jobs:
   live:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # ملاحضة: هذه الصلاحية ضرورية لكي يسمح للبوت بتحديث ملف القائمة تلقائياً
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -21,16 +21,15 @@ jobs:
 
       - name: Rotate Playlist (Move first video to end)
         run: |
-          # قراءة أول سطر من القائمة ونقله إلى النهاية
           if [ -s playlist.txt ]; then
             first_line=$(head -n 1 playlist.txt)
             tail -n +2 playlist.txt > temp_playlist.txt
             echo "$first_line" >> temp_playlist.txt
             mv temp_playlist.txt playlist.txt
             
-            # رفع التعديل تلقائياً إلى المستودع لكي يستمر التدوير في المرة القادمة
             git config --global user.name "github-actions[bot]"
             git config --global user.email "github-actions[bot]@users.noreply.github.com"
+            git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
             git add playlist.txt
             git commit -m "Auto-rotate playlist: moved played video to end" || echo "No changes to commit"
             git push || echo "Push failed or not needed"
@@ -61,6 +60,6 @@ jobs:
           ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
           -t 18000 \
           -c:v libx264 -preset ultrafast -tune zerolatency -b:v 2500k -maxrate 2500k -bufsize 5000k \
-          -pix_fmt yuv420p -g 60 -r 30 \
+          -pix_fmt yuv420p -g 60 -keyint_min 60 -r 30 \
           -c:a aac -b:a 128k -ar 44100 \
-          -f flv rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}
+          -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}"
