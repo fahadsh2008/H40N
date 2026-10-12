@@ -1,42 +1,62 @@
-name: Live Stream
+name: Live Stream 24/7
 
 on:
-  workflow_dispatch:
-
-permissions:
-  contents: read
+  schedule:
+    # يعمل تلقائياً كل 5 ساعات (تحديد الدقيقة 0 وكل 5 ساعات)
+    - cron: '0 */5 * * *'
+  workflow_dispatch: # يتيح لك تشغيله يدوياً متى ما أردت
 
 jobs:
   stream:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
+      - name: Checkout Repository
         uses: actions/checkout@v3
 
-      - name: Install FFmpeg
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
+      # 1. استرجاع رقم الفيديو الأخير الذي توقفنا عنده
+      - name: Restore Current Video Index
+        uses: actions/cache@v3
+        with:
+          path: video_index.txt
+          key: video-index-cache-${{ github.run_id }}
+          restore-keys: |
+            video-index-cache-
 
-      - name: Download Videos from Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # تنزيل ملفات الـ mp4 مع استخدام --clobber لتجنب خطأ تكرار الملفات
-          gh release download v1.0 -p "*.mp4" -R fahadsh2008/H40N --clobber
-
-      - name: Create Video List
-        run: |
-          # ترتيب الفيديوهات المنزلة تصاعدياً حتى 26 وما فوق
-          find . -maxdepth 1 -type f -name "*.mp4" ! -name "break.mp4" | sort -V | sed "s/^/file '/;s/$/'/" > playlist.txt
-          cat playlist.txt
-
+      # 2. بدء البث والانتقال للفيديو التالي
       - name: Start Live Stream
         env:
-          STREAM_KEY: ${{ secrets.STREAM_KEY }}
+          STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
         run: |
-          ffmpeg -re -f concat -safe 0 -stream_loop -1 -i playlist.txt \
-          -c:v libx264 -preset ultrafast -b:v 2500k -maxrate 2500k -bufsize 5000k -pix_fmt yuv420p \
-          -c:a aac -b:a 128k -ar 44100 \
-          -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY"
+          # إذا لم يكن ملف العداد موجوداً، نبدأ من الفيديو رقم 1
+          if [ ! -f video_index.txt ]; then
+            echo "1" > video_index.txt
+          fi
+
+          INDEX=$(cat video_index.txt)
+          VIDEO_FILE="videos/${INDEX}.mp4"
+
+          # إذا انتهت جميع الفيديوهات في المجلد، أعد البدء من الفيديو رقم 1
+          if [ ! -f "$VIDEO_FILE" ]; then
+            echo "1" > video_index.txt
+            INDEX=1
+            VIDEO_FILE="videos/1.mp4"
+          fi
+
+          echo "جارٍ الآن بث الفيديو: $VIDEO_FILE"
+
+          # تجهيز رقم الفيديو القادم للمرة القادمة
+          NEXT_INDEX=$((INDEX + 1))
+          echo "$NEXT_INDEX" > video_index.txt
+
+          # تشغيل FFmpeg لمدة أقل بقليل من 5 ساعات (مثلاً 4 ساعات و 50 دقيقة) ليتم إعادة التشغيل بأمان
+          # أو ترك FFmpeg يبث حتى يفصل الـ Action بعد 5 ساعات
+          ffmpeg -re -i "$VIDEO_FILE" -c:v libx264 -preset ultrafast -b:v 3000k -maxrate 3000k -bufsize 6000k -pix_fmt yuv420p -g 50 -c:a aac -b:a 128k -ar 44100 -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY"
+
+      # 3. حفظ رقم الفيديو الجديد للعملية القادمة
+      - name: Save Next Video Index
+        if: always()
+        uses: actions/cache@v3
+        with:
+          path: video_index.txt
+          key: video-index-cache-${{ github.run_id }}
