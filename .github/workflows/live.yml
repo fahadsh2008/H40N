@@ -12,40 +12,35 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Install FFmpeg & Wget
+      - name: Install FFmpeg
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg wget
+          sudo apt-get install -y ffmpeg
 
-      - name: Download Videos from Releases
+      - name: Download All Assets from Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p videos
-          while IFS= read -r line || [[ -n "$line" ]]; do
-            # استخراج الرابط من داخل التناصيص
-            url=$(echo "$line" | sed "s/file '\(.*\)'/\1/")
-            if [[ "$url" =~ ^http ]]; then
-              filename=$(basename "$url")
-              echo "Downloading $filename..."
-              wget -q -O "videos/$filename" "$url" || true
-            fi
-          done < playlist.txt
+          gh release download Videos --dir videos --repo fahadsh2008/H40N || true
 
-      - name: Prepare Local Playlist
+      - name: Prepare Playlist
         run: |
           rm -f local_playlist.txt
           while IFS= read -r line || [[ -n "$line" ]]; do
-            url=$(echo "$line" | sed "s/file '\(.*\)'/\1/")
-            if [[ "$url" =~ ^http ]]; then
-              filename=$(basename "$url")
+            # استخراج اسم الملف فقط سواء كان رابطاً أم اسماً مجرداً
+            filename=$(echo "$line" | sed "s/file '\(.*\)'/\1/" | xargs basename)
+            if [ -f "videos/$filename" ]; then
               echo "file 'videos/$filename'" >> local_playlist.txt
-            else
-              echo "$line" >> local_playlist.txt
+            elif [ -f "$filename" ]; then
+              echo "file '$filename'" >> local_playlist.txt
             fi
           done < playlist.txt
+          cat local_playlist.txt
 
       - name: Start Live Stream
         run: |
-          ffmpeg -re -stream_loop -1 -f concat -safe 0 -protocol_whitelist file,http,https,tcp,tls,crypto,data -i local_playlist.txt \
+          ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
           -t 18000 \
           -c:v libx264 -preset ultrafast -tune zerolatency -b:v 2500k -maxrate 2500k -bufsize 5000k \
           -pix_fmt yuv420p -g 60 -r 30 \
