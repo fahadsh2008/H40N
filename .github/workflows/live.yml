@@ -3,7 +3,6 @@ name: Live Stream
 on:
   workflow_dispatch:
 
-# إضافة الصلاحيات هنا لتمكين سحب الملفات من الـ Release
 permissions:
   contents: read
 
@@ -22,10 +21,10 @@ jobs:
 
       - name: Download Videos from Release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # تنزيل جميع ملفات الـ mp4 من إصدار v1.0 تلقائياً
-          gh release download v1.0 -p "*.mp4"
+          # تنزيل ملفات الـ mp4 من إصدار v1.0 مع تحديد اسم المستودع صراحةً
+          gh release download v1.0 -p "*.mp4" -R fahadsh2008/H40N
 
       - name: Create Video List
         run: |
