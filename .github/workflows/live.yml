@@ -8,6 +8,8 @@ on:
 jobs:
   live:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # ملاحضة: هذه الصلاحية ضرورية لكي يسمح للبوت بتحديث ملف القائمة تلقائياً
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -16,6 +18,23 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
+
+      - name: Rotate Playlist (Move first video to end)
+        run: |
+          # قراءة أول سطر من القائمة ونقله إلى النهاية
+          if [ -s playlist.txt ]; then
+            first_line=$(head -n 1 playlist.txt)
+            tail -n +2 playlist.txt > temp_playlist.txt
+            echo "$first_line" >> temp_playlist.txt
+            mv temp_playlist.txt playlist.txt
+            
+            # رفع التعديل تلقائياً إلى المستودع لكي يستمر التدوير في المرة القادمة
+            git config --global user.name "github-actions[bot]"
+            git config --global user.email "github-actions[bot]@users.noreply.github.com"
+            git add playlist.txt
+            git commit -m "Auto-rotate playlist: moved played video to end" || echo "No changes to commit"
+            git push || echo "Push failed or not needed"
+          fi
 
       - name: Download All Assets from Release
         env:
@@ -28,7 +47,6 @@ jobs:
         run: |
           rm -f local_playlist.txt
           while IFS= read -r line || [[ -n "$line" ]]; do
-            # استخراج اسم الملف فقط سواء كان رابطاً أم اسماً مجرداً
             filename=$(echo "$line" | sed "s/file '\(.*\)'/\1/" | xargs basename)
             if [ -f "videos/$filename" ]; then
               echo "file 'videos/$filename'" >> local_playlist.txt
