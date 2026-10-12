@@ -11,12 +11,12 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Install FFmpeg and wget
+      - name: Install FFmpeg and Fonts
         run: |
           sudo apt update
-          sudo apt install -y ffmpeg wget
+          sudo apt install -y ffmpeg wget fonts-freefont-ttf fonts-dejavu-core
 
       - name: Download Large Videos from Releases
         run: |
