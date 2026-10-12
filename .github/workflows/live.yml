@@ -16,10 +16,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
+      - name: Download Videos from Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # تنزيل جميع ملفات الـ mp4 من إصدار v1.0 تلقائياً
+          gh release download v1.0 -p "*.mp4"
+
       - name: Create Video List
         run: |
-          # استبعاد break.mp4 وترتيب الفيديوهات تصاعدياً بالشكل الصحيح حتى 26 وما فوق
-          find . -maxdepth 2 -type f -name "*.mp4" ! -name "break.mp4" | sort -V | sed "s/^/file '/;s/$/'/" > playlist.txt
+          # ترتيب الفيديوهات المنزلة تصاعدياً حتى 26 وما فوق
+          find . -maxdepth 1 -type f -name "*.mp4" ! -name "break.mp4" | sort -V | sed "s/^/file '/;s/$/'/" > playlist.txt
           cat playlist.txt
 
       - name: Start Live Stream
