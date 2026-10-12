@@ -3,7 +3,6 @@ name: YouTube Live Stream
 on:
   workflow_dispatch:
   schedule:
-    # إعادة تشغيل البث تلقائياً كل 5 ساعات
     - cron: '0 */5 * * *'
 
 jobs:
@@ -13,14 +12,40 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Install FFmpeg
+      - name: Install FFmpeg & Wget
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          sudo apt-get install -y ffmpeg wget
+
+      - name: Download Videos from Releases
+        run: |
+          mkdir -p videos
+          while IFS= read -r line || [[ -n "$line" ]]; do
+            # استخراج الرابط من داخل التناصيص
+            url=$(echo "$line" | sed "s/file '\(.*\)'/\1/")
+            if [[ "$url" =~ ^http ]]; then
+              filename=$(basename "$url")
+              echo "Downloading $filename..."
+              wget -q -O "videos/$filename" "$url" || true
+            fi
+          done < playlist.txt
+
+      - name: Prepare Local Playlist
+        run: |
+          rm -f local_playlist.txt
+          while IFS= read -r line || [[ -n "$line" ]]; do
+            url=$(echo "$line" | sed "s/file '\(.*\)'/\1/")
+            if [[ "$url" =~ ^http ]]; then
+              filename=$(basename "$url")
+              echo "file 'videos/$filename'" >> local_playlist.txt
+            else
+              echo "$line" >> local_playlist.txt
+            fi
+          done < playlist.txt
 
       - name: Start Live Stream
         run: |
-          ffmpeg -re -stream_loop -1 -f concat -safe 0 -i playlist.txt \
+          ffmpeg -re -stream_loop -1 -f concat -safe 0 -protocol_whitelist file,http,https,tcp,tls,crypto,data -i local_playlist.txt \
           -t 18000 \
           -c:v libx264 -preset ultrafast -tune zerolatency -b:v 2500k -maxrate 2500k -bufsize 5000k \
           -pix_fmt yuv420p -g 60 -r 30 \
