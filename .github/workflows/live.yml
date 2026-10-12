@@ -21,13 +21,32 @@ jobs:
       - name: Download Large Videos from Releases
         run: |
           wget -O 2.mp4 "https://github.com/fahadsh2008/H40N/releases/download/v1.0/2.mp4"
+          wget -O 3.mp4 "https://github.com/fahadsh2008/H40N/releases/download/v1.0/3.mp4"
           wget -O 4.mp4 "https://github.com/fahadsh2008/H40N/releases/download/v1.0/4.mp4"
+          wget -O 5.mp4 "https://github.com/fahadsh2008/H40N/releases/download/v1.0/5.mp4"
           wget -O 6.mp4 "https://github.com/fahadsh2008/H40N/releases/download/v1.0/6.mp4"
+          wget -O 7.mp4 "https://github.com/fahadsh2008/H40N/releases/download/v1.0/7.mp4"
+          wget -O 8.mp4 "https://github.com/fahadsh2008/H40N/releases/download/v1.0/8.mp4"
+          wget -O 9.mp4 "https://github.com/fahadsh2008/H40N/releases/download/v1.0/9.mp4"
           wget -O 10.mp4 "https://github.com/fahadsh2008/H40N/releases/download/v1.0/10.mp4"
+          wget -O 11.mp4 "https://github.com/fahadsh2008/H40N/releases/download/v1.0/11.mp4"
+          wget -O 12.mp4 "https://github.com/fahadsh2008/H40N/releases/download/v1.0/12.mp4"
+          wget -O 13.mp4 "https://github.com/fahadsh2008/H40N/releases/download/v1.0/13.mp4"
           wget -O 14.mp4 "https://github.com/fahadsh2008/H40N/releases/download/v1.0/14.mp4"
+          wget -O 15.mp4 "https://github.com/fahadsh2008/H40N/releases/download/v1.0/15.mp4"
+          wget -O 16.mp4 "https://github.com/fahadsh2008/H40N/releases/download/v1.0/16.mp4"
+
+      - name: Create Custom Transition Video (فاصل 5 ثواني)
+        run: |
+          ffmpeg -f lavfi -i color=c=0x0B0F19:s=1280x720:r=30 \
+          -vf "drawtext=text='FhdXsH':fontcolor=0xF59E0B:fontsize=52:bold=1:x=(w-text_w)/2:y=(h-text_h)/2-40,\
+               drawtext=text='شرح الأربعين النووية':fontcolor=0x38BDF8:fontsize=24:x=(w-text_w)/2:y=(h-text_h)/2+20,\
+               drawtext=text='يرجى الانتظار، للحديث التالي...':fontcolor=0xFFFFFF:fontsize=20:x=(w-text_w)/2:y=(h-text_h)/2+70" \
+          -f lavfi -i anullsrc=cl=stereo:r=44100 \
+          -t 5 -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest break.mp4
 
       - name: Start Stream with FFmpeg
         env:
           YOUTUBE_STREAM_KEY: ${{ secrets.STREAM_KEY }}
         run: |
-          ffmpeg -re -f concat -safe 0 -i playlist.txt -c:v libx264 -preset ultrafast -b:v 3000k -maxrate 3000k -bufsize 6000k -pix_fmt yuv420p -g 60 -c:a aac -b:a 128k -ar 44100 -f flv rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY
+          ffmpeg -re -stream_loop -1 -f concat -safe 0 -i playlist.txt -c:v libx264 -preset ultrafast -b:v 3000k -maxrate 3000k -bufsize 6000k -pix_fmt yuv420p -g 60 -c:a aac -b:a 128k -ar 44100 -f flv rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY
