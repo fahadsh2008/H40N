@@ -40,7 +40,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p videos
-          gh release download --dir videos --repo fahadsh2008/H40N || true
+          gh release download Videos --dir videos --pattern '*' --repo fahadsh2008/H40N || true
 
       - name: Prepare Playlist
         run: |
