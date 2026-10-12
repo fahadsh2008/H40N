@@ -3,6 +3,10 @@ name: Live Stream
 on:
   workflow_dispatch:
 
+# إضافة الصلاحيات هنا لتمكين سحب الملفات من الـ Release
+permissions:
+  contents: read
+
 jobs:
   stream:
     runs-on: ubuntu-latest
