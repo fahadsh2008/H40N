@@ -55,6 +55,13 @@ jobs:
           done < playlist.txt
           cat local_playlist.txt
 
+      - name: Verify Files
+        run: |
+          echo "--- Checking Playlist Content ---"
+          cat local_playlist.txt
+          echo "--- Checking Downloaded Video Sizes ---"
+          ls -lh videos/
+
       - name: Start Live Stream
         run: |
           ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
