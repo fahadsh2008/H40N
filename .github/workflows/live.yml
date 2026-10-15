@@ -60,10 +60,10 @@ jobs:
           echo "--- Checking Downloaded Video Sizes ---"
           ls -lh videos/
 
-      - name: Start Live Stream with Auto-Recovery
+      - name: Start Live Stream with Deep Reset
         run: |
-          echo "Waiting 15 seconds for YouTube to reset previous session..."
-          sleep 15
+          echo "Waiting 60 seconds to completely flush old YouTube connection..."
+          sleep 60
           
           while true; do
             echo "Starting FFmpeg stream..."
