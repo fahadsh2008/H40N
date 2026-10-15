@@ -15,9 +15,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install FFmpeg
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
+        run: sudo apt-get install -y --no-install-recommends ffmpeg
 
       - name: Rotate Playlist (Move first video to end)
         run: |
@@ -62,12 +60,19 @@ jobs:
           echo "--- Checking Downloaded Video Sizes ---"
           ls -lh videos/
 
-      - name: Start Live Stream
+      - name: Start Live Stream with Auto-Recovery
         run: |
-          ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
-          -c:v libx264 -preset ultrafast -tune zerolatency -b:v 2500k -maxrate 2500k -bufsize 5000k \
-          -pix_fmt yuv420p -g 60 -keyint_min 60 -r 30 \
-          -c:a aac -b:a 128k -ar 44100 -ac 2 \
-          -fflags +genpts \
-          -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 \
-          -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}" || true
+          echo "Waiting 15 seconds for YouTube to reset previous session..."
+          sleep 15
+          
+          while true; do
+            echo "Starting FFmpeg stream..."
+            ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
+            -c:v libx264 -preset ultrafast -tune zerolatency -b:v 2500k -maxrate 2500k -bufsize 5000k \
+            -pix_fmt yuv420p -g 60 -keyint_min 60 -r 30 \
+            -c:a aac -b:a 128k -ar 44100 -ac 2 \
+            -fflags +genpts \
+            -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 \
+            -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}" || echo "Stream interrupted, restarting in 5 seconds..."
+            sleep 5
+          done
