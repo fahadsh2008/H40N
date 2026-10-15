@@ -65,9 +65,9 @@ jobs:
       - name: Start Live Stream
         run: |
           ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
-          -t 18000 \
           -c:v libx264 -preset ultrafast -tune zerolatency -b:v 2500k -maxrate 2500k -bufsize 5000k \
           -pix_fmt yuv420p -g 60 -keyint_min 60 -r 30 \
           -c:a aac -b:a 128k -ar 44100 -ac 2 \
           -fflags +genpts \
-          -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}"
+          -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 \
+          -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}" || true
