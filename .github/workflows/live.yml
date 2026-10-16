@@ -1,5 +1,10 @@
 name: YouTube Live Stream
 
+# منع التداخل لضمان عدم عمل سيرفرين في نفس الوقت بنفس مفتاح البث
+concurrency:
+  group: youtube-live-stream
+  cancel-in-progress: true # يوقف البث القديم ويبدأ البث الجديد تلقائياً عند موعد الـ Cron
+
 on:
   workflow_dispatch:
   schedule:
@@ -13,6 +18,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # سحب السجل كاملاً لمنع التعارض في Git Push
 
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
@@ -28,9 +35,11 @@ jobs:
             git config --global user.name "github-actions[bot]"
             git config --global user.email "github-actions[bot]@users.noreply.github.com"
             git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+            
+            git pull origin main --rebase || true
             git add playlist.txt
             git commit -m "Auto-rotate playlist: moved played video to end" || echo "No changes to commit"
-            git push || echo "Push failed or not needed"
+            git push origin HEAD:main || echo "Push failed or not needed"
           fi
 
       - name: Download All Assets from Release
