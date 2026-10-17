@@ -3,12 +3,12 @@ name: YouTube Live Stream
 # منع التداخل لضمان عدم عمل سيرفرين في نفس الوقت بنفس مفتاح البث
 concurrency:
   group: youtube-live-stream
-  cancel-in-progress: true # يوقف البث القديم ويبدأ البث الجديد تلقائياً أوتوماتيكياً
+  cancel-in-progress: true # يوقف البث القديم ويبدأ البث الجديد تلقائياً
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */4 * * *' # يعمل أوتوماتيكياً كل 4 ساعات لتوليد التداخل السلس
+    - cron: '0 */4 * * *' # يعمل أوتوماتيكياً كل 4 ساعات
 
 jobs:
   live:
@@ -72,7 +72,7 @@ jobs:
           ls -lh videos/
 
       - name: Start Live Stream
-        timeout-minutes: 245 # تنتهي بعد 4 ساعات و5 دقائق ليأتي البديل أوتوماتيكياً
+        timeout-minutes: 235 # تم تقليلها لـ 3 ساعات و55 دقيقة لضمان إغلاق الاتصال وتحرير مفتاح البث تماماً قبل بدء المهمة التالية بـ 5 دقائق
         run: |
           echo "Starting FFmpeg stream..."
           ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
