@@ -8,7 +8,7 @@ concurrency:
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */4 * * *' # يعمل أوتوماتيكياً كل 4 ساعات
+    - cron: '0 */6 * * *' # يعمل كل 6 ساعات بانتظام ليتناسب مع مدة التشغيل
 
 jobs:
   live:
@@ -72,7 +72,7 @@ jobs:
           ls -lh videos/
 
       - name: Start Live Stream
-        timeout-minutes: 235 # تم تقليلها لـ 3 ساعات و55 دقيقة لضمان إغلاق الاتصال وتحرير مفتاح البث تماماً قبل بدء المهمة التالية بـ 5 دقائق
+        timeout-minutes: 350 # مدة التشغيل 350 دقيقة (5 ساعات و50 دقيقة) مع فاصل زمني 10 دقائق قبل البدء التالي
         run: |
           echo "Starting FFmpeg stream..."
           ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
