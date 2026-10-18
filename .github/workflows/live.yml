@@ -1,6 +1,5 @@
 name: YouTube Live Stream
 
-# إلغاء المهمة القديمة فوراً وبدء الدورة الجديدة لمنع التراكم والتداخل
 concurrency:
   group: youtube-live-stream
   cancel-in-progress: true
@@ -8,11 +7,12 @@ concurrency:
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */3 * * *' # يعمل تلقائياً كل 3 ساعات
+    - cron: '0 */6 * * *' # يعمل كل 6 ساعات لتغطية دورة الـ 5.5 ساعة وإعادة تدوير البث
 
 jobs:
   live:
     runs-on: ubuntu-latest
+    timeout-minutes: 355 # أقصى وقت للمهمة لتجنب إيقاف قيت هوب الإجباري عند 360 دقيقة
     permissions:
       contents: write
     steps:
@@ -24,7 +24,7 @@ jobs:
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
 
-      # --- 1. تدوير قائمة التشغيل بصورة آمنة ومحمية من رموز ويندوز ---
+      # --- 1. تدوير قائمة التشغيل بصورة آمنة ---
       - name: Rotate Playlist (Move first video to end)
         run: |
           if [ -s playlist.txt ]; then
@@ -70,13 +70,10 @@ jobs:
               fi
             fi
           done < playlist.txt
-          
-          echo "=== Content of local_playlist.txt ==="
-          cat local_playlist.txt
 
-      # --- 4. تشغيل البث (لمدة تتناسب مع دورة الـ 3 ساعات) ---
-      - name: Start Live Stream
-        timeout-minutes: 175 # أقل من 3 ساعات لضمان انتهاء الجلسة بسلاسة قبل الدورة القادمة
+      # --- 4. البث لمدة 5 ساعات (300 دقيقة) ---
+      - name: Start Live Stream (5 Hours)
+        timeout-minutes: 300
         run: |
           ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
           -c:v libx264 -preset ultrafast -b:v 2500k -maxrate 2500k -bufsize 5000k \
@@ -85,4 +82,26 @@ jobs:
           -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 \
           -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}" || true
 
-          echo "انتهت دورة الـ 3 ساعات الحالية بنجاح."
+      # --- 5. إطفاء قسري بالقوة ---
+      - name: Force Shutdown FFmpeg
+        run: |
+          echo "جاري إطفاء البث قسراً بالقوة..."
+          pkill -9 ffmpeg || true
+          sleep 10
+
+      # --- 6. الانتظار لمدة 30 دقيقة ---
+      - name: Wait 30 Minutes
+        run: |
+          echo "انتظار لمدة 30 دقيقة قبل إعادة التشغيل..."
+          sleep 1800
+
+      # --- 7. إعادة تشغيل البث مرة أخرى ---
+      - name: Restart Live Stream
+        run: |
+          echo "إعادة تشغيل البث..."
+          ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
+          -c:v libx264 -preset ultrafast -b:v 2500k -maxrate 2500k -bufsize 5000k \
+          -pix_fmt yuv420p -g 60 -keyint_min 60 -r 30 \
+          -c:a aac -b:a 128k -ar 44100 -ac 2 \
+          -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 \
+          -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}" || true
