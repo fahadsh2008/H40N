@@ -1,14 +1,14 @@
 name: YouTube Live Stream
 
-# منع التداخل لضمان عدم عمل سيرفرين في نفس الوقت بنفس مفتاح البث
+# منع تداخل السيرفرات وضمان عدم قطع البث الحالي أثناء تشغيله
 concurrency:
   group: youtube-live-stream
-  cancel-in-progress: true # يوقف البث القديم ويبدأ البث الجديد تلقائياً
+  cancel-in-progress: false # يمنع إلغاء البث الحالي تلقائياً عند بدء تشغيل جديد
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */6 * * *' # يعمل كل 6 ساعات بانتظام ليتناسب مع مدة التشغيل[cite: 5]
+    - cron: '0 */6 * * *' # يعمل كل 6 ساعات ليتوافق مع مدة البث[cite: 5]
 
 jobs:
   live:
@@ -19,11 +19,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # سحب السجل كاملاً لمنع التعارض في Git Push
+          fetch-depth: 0 # سحب السجل كاملاً لمنع مشاكل الـ Git Push عند التدوير
 
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
 
+      # --- خطوة تدوير قائمة التشغيل (نقل الفيديو الأول للنهاية) ---
       - name: Rotate Playlist (Move first video to end)
         run: |
           if [ -s playlist.txt ]; then
@@ -71,8 +72,9 @@ jobs:
           echo "--- Checking Downloaded Video Sizes ---"
           ls -lh videos/
 
+      # --- خطوة بدء البث الحي مع معالجة إعادة الاتصال التلقائي ---
       - name: Start Live Stream
-        timeout-minutes: 350 # مدة التشغيل 350 دقيقة (5 ساعات و50 دقيقة) مع فاصل زمني 10 دقائق قبل البدء التالي[cite: 5]
+        timeout-minutes: 350 # مدة التشغيل 350 دقيقة (5 ساعات و50 دقيقة)[cite: 5]
         run: |
           echo "Starting FFmpeg stream with auto-reconnect..."
           ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
