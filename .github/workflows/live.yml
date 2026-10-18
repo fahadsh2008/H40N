@@ -1,14 +1,14 @@
 name: YouTube Live Stream
 
-# منع تداخل السيرفرات وضمان استمرار البث الحالي دون قطع مفاجئ
+# إلغاء المهمة القديمة فوراً وبدء الدورة الجديدة لمنع التراكم والتداخل
 concurrency:
   group: youtube-live-stream
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */6 * * *' # يعمل تلقائياً كل 6 ساعات لتجديد الدورات
+    - cron: '0 */3 * * *' # يعمل تلقائياً كل 3 ساعات
 
 jobs:
   live:
@@ -24,12 +24,14 @@ jobs:
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
 
-      # --- 1. تدوير قائمة التشغيل ---
+      # --- 1. تدوير قائمة التشغيل بصورة آمنة ومحمية من رموز ويندوز ---
       - name: Rotate Playlist (Move first video to end)
         run: |
           if [ -s playlist.txt ]; then
-            first_line=$(head -n 1 playlist.txt)
-            tail -n +2 playlist.txt > temp_playlist.txt
+            sed -i 's/\r$//' playlist.txt
+            first_line=$(head -n 1 playlist.txt | tr -d '\r')
+            
+            tail -n +2 playlist.txt | grep -v '^$' > temp_playlist.txt
             echo "$first_line" >> temp_playlist.txt
             mv temp_playlist.txt playlist.txt
             
@@ -55,7 +57,10 @@ jobs:
       - name: Prepare Playlist
         run: |
           rm -f local_playlist.txt
+          sed -i 's/\r$//' playlist.txt
+          
           while IFS= read -r line || [[ -n "$line" ]]; do
+            [ -z "$line" ] && continue
             if [[ "$line" =~ ^file ]]; then
               filename=$(echo "$line" | sed "s/file '\(.*\)'/\1/" | xargs basename)
               if [ -f "videos/$filename" ]; then
@@ -65,58 +70,19 @@ jobs:
               fi
             fi
           done < playlist.txt
+          
+          echo "=== Content of local_playlist.txt ==="
           cat local_playlist.txt
 
-      # --- 4. التحقق من الملفات وأحجامها ---
-      - name: Verify Files
+      # --- 4. تشغيل البث (لمدة تتناسب مع دورة الـ 3 ساعات) ---
+      - name: Start Live Stream
+        timeout-minutes: 175 # أقل من 3 ساعات لضمان انتهاء الجلسة بسلاسة قبل الدورة القادمة
         run: |
-          echo "--- Checking Playlist Content ---"
-          cat local_playlist.txt
-          echo "--- Checking Downloaded Video Sizes ---"
-          ls -lh videos/
-
-      # --- 5. التسلسل الدقيق للبث والإطفاء والانتظار ---
-      - name: Start Live Stream with Exact Sequence
-        timeout-minutes: 720
-        run: |
-          echo "=========================================="
-          echo "--- 1. الفترة الأساسية الأولى (350 دقيقة) ---"
-          echo "=========================================="
-          timeout 21000 ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
+          ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
           -c:v libx264 -preset ultrafast -b:v 2500k -maxrate 2500k -bufsize 5000k \
           -pix_fmt yuv420p -g 60 -keyint_min 60 -r 30 \
           -c:a aac -b:a 128k -ar 44100 -ac 2 \
           -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 \
           -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}" || true
 
-          echo "=========================================="
-          echo "--- 2. إطفاء + انتظار 5 دقائق ---"
-          echo "=========================================="
-          sleep 300
-
-          echo "=========================================="
-          echo "--- 3. تشغيل البث (لفترة قصيرة مؤقتة) ---"
-          echo "=========================================="
-          timeout 300 ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
-          -c:v libx264 -preset ultrafast -b:v 2500k -maxrate 2500k -bufsize 5000k \
-          -pix_fmt yuv420p -g 60 -keyint_min 60 -r 30 \
-          -c:a aac -b:a 128k -ar 44100 -ac 2 \
-          -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 \
-          -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}" || true
-
-          echo "=========================================="
-          echo "--- 4. إطفاء + انتظار 5 دقائق إضافية ---"
-          echo "=========================================="
-          sleep 300
-
-          echo "=========================================="
-          echo "--- 5. تشغيل البث مرة ثانية (الفترة الثانية 350 دقيقة) ---"
-          echo "=========================================="
-          timeout 21000 ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
-          -c:v libx264 -preset ultrafast -b:v 2500k -maxrate 2500k -bufsize 5000k \
-          -pix_fmt yuv420p -g 60 -keyint_min 60 -r 30 \
-          -c:a aac -b:a 128k -ar 44100 -ac 2 \
-          -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 \
-          -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}" || true
-
-          echo "تمت جميع مراحل التسلسل الدقيق بنجاح."
+          echo "انتهت دورة الـ 3 ساعات الحالية بنجاح."
