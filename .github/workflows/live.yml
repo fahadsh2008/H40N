@@ -1,14 +1,14 @@
 name: YouTube Live Stream
 
-# منع تداخل السيرفرات وضمان عدم قطع البث الحالي أثناء تشغيله
+# منع تداخل السيرفرات وضمان استمرار البث الحالي دون قطع مفاجئ
 concurrency:
   group: youtube-live-stream
-  cancel-in-progress: false # يمنع إلغاء البث الحالي تلقائياً عند بدء تشغيل جديد
+  cancel-in-progress: false
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */6 * * *' # يعمل كل 6 ساعات ليتوافق مع مدة البث[cite: 5]
+    - cron: '0 */6 * * *' # يعمل تلقائياً كل 6 ساعات لتجديد الدورات
 
 jobs:
   live:
@@ -19,12 +19,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # سحب السجل كاملاً لمنع مشاكل الـ Git Push عند التدوير
+          fetch-depth: 0
 
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
 
-      # --- خطوة تدوير قائمة التشغيل (نقل الفيديو الأول للنهاية) ---
+      # --- 1. تدوير قائمة التشغيل ---
       - name: Rotate Playlist (Move first video to end)
         run: |
           if [ -s playlist.txt ]; then
@@ -35,7 +35,7 @@ jobs:
             
             git config --global user.name "github-actions[bot]"
             git config --global user.email "github-actions[bot]@users.noreply.github.com"
-            git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+            git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
             
             git pull origin main --rebase || true
             git add playlist.txt
@@ -43,6 +43,7 @@ jobs:
             git push origin HEAD:main || echo "Push failed or not needed"
           fi
 
+      # --- 2. تنزيل الفيديوهات من Release ---
       - name: Download All Assets from Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -50,6 +51,7 @@ jobs:
           mkdir -p videos
           gh release download --dir videos --pattern '*' --repo fahadsh2008/H40N || true
 
+      # --- 3. إعداد القائمة المحلية ---
       - name: Prepare Playlist
         run: |
           rm -f local_playlist.txt
@@ -65,6 +67,7 @@ jobs:
           done < playlist.txt
           cat local_playlist.txt
 
+      # --- 4. التحقق من الملفات وأحجامها ---
       - name: Verify Files
         run: |
           echo "--- Checking Playlist Content ---"
@@ -72,14 +75,48 @@ jobs:
           echo "--- Checking Downloaded Video Sizes ---"
           ls -lh videos/
 
-      # --- خطوة بدء البث الحي مع معالجة إعادة الاتصال التلقائي ---
-      - name: Start Live Stream
-        timeout-minutes: 350 # مدة التشغيل 350 دقيقة (5 ساعات و50 دقيقة)[cite: 5]
+      # --- 5. التسلسل الدقيق للبث والإطفاء والانتظار ---
+      - name: Start Live Stream with Exact Sequence
+        timeout-minutes: 720
         run: |
-          echo "Starting FFmpeg stream with auto-reconnect..."
-          ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
+          echo "=========================================="
+          echo "--- 1. الفترة الأساسية الأولى (350 دقيقة) ---"
+          echo "=========================================="
+          timeout 21000 ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
           -c:v libx264 -preset ultrafast -b:v 2500k -maxrate 2500k -bufsize 5000k \
           -pix_fmt yuv420p -g 60 -keyint_min 60 -r 30 \
           -c:a aac -b:a 128k -ar 44100 -ac 2 \
           -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 \
-          -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}"
+          -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}" || true
+
+          echo "=========================================="
+          echo "--- 2. إطفاء + انتظار 5 دقائق ---"
+          echo "=========================================="
+          sleep 300
+
+          echo "=========================================="
+          echo "--- 3. تشغيل البث (لفترة قصيرة مؤقتة) ---"
+          echo "=========================================="
+          timeout 300 ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
+          -c:v libx264 -preset ultrafast -b:v 2500k -maxrate 2500k -bufsize 5000k \
+          -pix_fmt yuv420p -g 60 -keyint_min 60 -r 30 \
+          -c:a aac -b:a 128k -ar 44100 -ac 2 \
+          -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 \
+          -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}" || true
+
+          echo "=========================================="
+          echo "--- 4. إطفاء + انتظار 5 دقائق إضافية ---"
+          echo "=========================================="
+          sleep 300
+
+          echo "=========================================="
+          echo "--- 5. تشغيل البث مرة ثانية (الفترة الثانية 350 دقيقة) ---"
+          echo "=========================================="
+          timeout 21000 ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
+          -c:v libx264 -preset ultrafast -b:v 2500k -maxrate 2500k -bufsize 5000k \
+          -pix_fmt yuv420p -g 60 -keyint_min 60 -r 30 \
+          -c:a aac -b:a 128k -ar 44100 -ac 2 \
+          -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 \
+          -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}" || true
+
+          echo "تمت جميع مراحل التسلسل الدقيق بنجاح."
