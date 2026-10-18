@@ -8,7 +8,7 @@ concurrency:
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */6 * * *' # يعمل كل 6 ساعات بانتظام ليتناسب مع مدة التشغيل
+    - cron: '0 */6 * * *' # يعمل كل 6 ساعات بانتظام ليتناسب مع مدة التشغيل[cite: 5]
 
 jobs:
   live:
@@ -72,11 +72,12 @@ jobs:
           ls -lh videos/
 
       - name: Start Live Stream
-        timeout-minutes: 350 # مدة التشغيل 350 دقيقة (5 ساعات و50 دقيقة) مع فاصل زمني 10 دقائق قبل البدء التالي
+        timeout-minutes: 350 # مدة التشغيل 350 دقيقة (5 ساعات و50 دقيقة) مع فاصل زمني 10 دقائق قبل البدء التالي[cite: 5]
         run: |
-          echo "Starting FFmpeg stream..."
+          echo "Starting FFmpeg stream with auto-reconnect..."
           ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
           -c:v libx264 -preset ultrafast -b:v 2500k -maxrate 2500k -bufsize 5000k \
           -pix_fmt yuv420p -g 60 -keyint_min 60 -r 30 \
           -c:a aac -b:a 128k -ar 44100 -ac 2 \
+          -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 \
           -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}"
