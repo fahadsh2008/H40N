@@ -1,1 +1,107 @@
+name: YouTube Live Stream
 
+concurrency:
+  group: youtube-live-stream
+  cancel-in-progress: true
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 */6 * * *' # يعمل كل 6 ساعات لتغطية دورة الـ 5.5 ساعة وإعادة تدوير البث
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355 # أقصى وقت للمهمة لتجنب إيقاف قيت هوب الإجباري عند 360 دقيقة
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+
+      # --- 1. تدوير قائمة التشغيل بصورة آمنة ---
+      - name: Rotate Playlist (Move first video to end)
+        run: |
+          if [ -s playlist.txt ]; then
+            sed -i 's/\r$//' playlist.txt
+            first_line=$(head -n 1 playlist.txt | tr -d '\r')
+            
+            tail -n +2 playlist.txt | grep -v '^$' > temp_playlist.txt
+            echo "$first_line" >> temp_playlist.txt
+            mv temp_playlist.txt playlist.txt
+            
+            git config --global user.name "github-actions[bot]"
+            git config --global user.email "github-actions[bot]@users.noreply.github.com"
+            git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
+            
+            git pull origin main --rebase || true
+            git add playlist.txt
+            git commit -m "Auto-rotate playlist: moved played video to end" || echo "No changes to commit"
+            git push origin HEAD:main || echo "Push failed or not needed"
+          fi
+
+      # --- 2. تنزيل الفيديوهات من Release ---
+      - name: Download All Assets from Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p videos
+          gh release download --dir videos --pattern '*' --repo fahadsh2008/H40N || true
+
+      # --- 3. إعداد القائمة المحلية ---
+      - name: Prepare Playlist
+        run: |
+          rm -f local_playlist.txt
+          sed -i 's/\r$//' playlist.txt
+          
+          while IFS= read -r line || [[ -n "$line" ]]; do
+            [ -z "$line" ] && continue
+            if [[ "$line" =~ ^file ]]; then
+              filename=$(echo "$line" | sed "s/file '\(.*\)'/\1/" | xargs basename)
+              if [ -f "videos/$filename" ]; then
+                echo "file 'videos/$filename'" >> local_playlist.txt
+              elif [ -f "$filename" ]; then
+                echo "file '$filename'" >> local_playlist.txt
+              fi
+            fi
+          done < playlist.txt
+
+      # --- 4. البث لمدة 5 ساعات (300 دقيقة) ---
+      - name: Start Live Stream (5 Hours)
+        timeout-minutes: 300
+        run: |
+          ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
+          -c:v libx264 -preset ultrafast -b:v 2500k -maxrate 2500k -bufsize 5000k \
+          -pix_fmt yuv420p -g 60 -keyint_min 60 -r 30 \
+          -c:a aac -b:a 128k -ar 44100 -ac 2 \
+          -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 \
+          -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}" || true
+
+      # --- 5. إطفاء قسري بالقوة ---
+      - name: Force Shutdown FFmpeg
+        run: |
+          echo "جاري إطفاء البث قسراً بالقوة..."
+          pkill -9 ffmpeg || true
+          sleep 10
+
+      # --- 6. الانتظار لمدة 30 دقيقة ---
+      - name: Wait 30 Minutes
+        run: |
+          echo "انتظار لمدة 30 دقيقة قبل إعادة التشغيل..."
+          sleep 1800
+
+      # --- 7. إعادة تشغيل البث مرة أخرى ---
+      - name: Restart Live Stream
+        run: |
+          echo "إعادة تشغيل البث..."
+          ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
+          -c:v libx264 -preset ultrafast -b:v 2500k -maxrate 2500k -bufsize 5000k \
+          -pix_fmt yuv420p -g 60 -keyint_min 60 -r 30 \
+          -c:a aac -b:a 128k -ar 44100 -ac 2 \
+          -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 \
+          -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}" || true
