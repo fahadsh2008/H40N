@@ -2,17 +2,17 @@ name: YouTube Live Stream
 
 concurrency:
   group: youtube-live-stream
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */6 * * *' # يعمل كل 6 ساعات لتغطية دورة الـ 5.5 ساعة وإعادة تدوير البث
+    - cron: '0 */5 * * *' # يعمل كل 5 ساعات لضمان استمرار البث على مدار 24 ساعة
 
 jobs:
   live:
     runs-on: ubuntu-latest
-    timeout-minutes: 355 # أقصى وقت للمهمة لتجنب إيقاف قيت هوب الإجباري عند 360 دقيقة
+    timeout-minutes: 340 # أقل من حد غيت هوب الأقصى (360 دقيقة) لتجنب الإيقاف الإجباري
     permissions:
       contents: write
     steps:
@@ -71,34 +71,10 @@ jobs:
             fi
           done < playlist.txt
 
-      # --- 4. البث لمدة 5 ساعات (300 دقيقة) ---
+      # --- 4. البث لمدة 5 ساعات والانهاء النظيف ---
       - name: Start Live Stream (5 Hours)
-        timeout-minutes: 300
+        timeout-minutes: 295
         run: |
-          ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
-          -c:v libx264 -preset ultrafast -b:v 2500k -maxrate 2500k -bufsize 5000k \
-          -pix_fmt yuv420p -g 60 -keyint_min 60 -r 30 \
-          -c:a aac -b:a 128k -ar 44100 -ac 2 \
-          -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 \
-          -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}" || true
-
-      # --- 5. إطفاء قسري بالقوة ---
-      - name: Force Shutdown FFmpeg
-        run: |
-          echo "جاري إطفاء البث قسراً بالقوة..."
-          pkill -9 ffmpeg || true
-          sleep 10
-
-      # --- 6. الانتظار لمدة 30 دقيقة ---
-      - name: Wait 30 Minutes
-        run: |
-          echo "انتظار لمدة 30 دقيقة قبل إعادة التشغيل..."
-          sleep 1800
-
-      # --- 7. إعادة تشغيل البث مرة أخرى ---
-      - name: Restart Live Stream
-        run: |
-          echo "إعادة تشغيل البث..."
           ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
           -c:v libx264 -preset ultrafast -b:v 2500k -maxrate 2500k -bufsize 5000k \
           -pix_fmt yuv420p -g 60 -keyint_min 60 -r 30 \
