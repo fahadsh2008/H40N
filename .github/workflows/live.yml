@@ -8,16 +8,16 @@ on:
   workflow_dispatch:
   schedule:
     # الأوقات بتوقيت UTC (توقيت السعودية ناقص 3 ساعات):
-    # الدورة الأولى: 3:00 ص (6:00 ص بتوقيت السعودية)
-    # الدورة الثانية: 9:00 ص (12:00 ظهراً بتوقيت السعودية)
-    # الدورة الثالثة: 15:00 (3:00 عصراً UTC = 6:00 م بتوقيت السعودية)
-    # الدورة الرابعة: 21:00 (9:00 م UTC = 12:00 منتصف الليل بتوقيت السعودية)
+    # الدورة الأولى: 6:00 ص بتوقيت السعودية (3:00 ص UTC)
+    # الدورة الثانية: 12:00 ظهراً بتوقيت السعودية (9:00 ص UTC)
+    # الدورة الثالثة: 6:00 م بتوقيت السعودية (15:00 UTC)
+    # الدورة الرابعة: 12:00 منتصف الليل بتوقيت السعودية (21:00 UTC)
     - cron: '0 3,9,15,21 * * *'
 
 jobs:
   live:
     runs-on: ubuntu-latest
-    timeout-minutes: 340 # أقل من حد غيت هوب الأقصى (360 دقيقة) لكل دورة
+    timeout-minutes: 320 # مهلة إجمالية للوظيفة لمنع التعليق
     permissions:
       contents: write
     steps:
@@ -28,6 +28,14 @@ jobs:
 
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+
+      # --- 0. الإنهاء الجبري لأي عمليات سابقه معلقة ---
+      - name: Force Kill Any Existing FFmpeg
+        run: |
+          echo "Checking and killing any lingering ffmpeg processes..."
+          pkill -9 ffmpeg || true
+          killall -9 ffmpeg || true
+          sleep 2
 
       # --- 1. تدوير قائمة التشغيل بصورة آمنة ---
       - name: Rotate Playlist (Move first video to end)
@@ -83,11 +91,14 @@ jobs:
             exit 1
           fi
 
-      # --- 4. البث لمدة 5 ساعات بالضبط مع إعادة الاتصال التلقائي ---
+      # --- 4. البث لمدة 5 ساعات مع الإنهاء الجبري التلقائي ---
       - name: Start Live Stream (5 Hours)
-        timeout-minutes: 300 # يوقف البث تلقائياً بعد 5 ساعات تماماً
         run: |
-          ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
+          # إنهاء إضافي للتأكد من نظافة المنفذ قبل البدء الفعلي
+          pkill -9 ffmpeg || true
+          
+          # تشغيل البث مع تحديد مهلة صارمة بـ 300 دقيقة (5 ساعات) ثم القتل الإجباري
+          timeout 300m ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
           -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p" \
           -c:v libx264 -preset ultrafast -b:v 2500k -maxrate 2800k -bufsize 5600k \
           -g 60 -keyint_min 60 \
@@ -95,3 +106,6 @@ jobs:
           -flvflags no_duration_filesize \
           -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 \
           -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}" || true
+          
+          # إغلاق إجباري نهائي للتأكد من تفريغ الموارد
+          pkill -9 ffmpeg || true
