@@ -1,4 +1,4 @@
-name: YouTube Live Stream
+name: YouTube Live Stream 4 Sessions (5h each)
 
 concurrency:
   group: youtube-live-stream
@@ -7,12 +7,17 @@ concurrency:
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */5 * * *' # يعمل كل 5 ساعات لضمان استمرار البث على مدار 24 ساعة
+    # الأوقات بتوقيت UTC (توقيت السعودية ناقص 3 ساعات):
+    # الدورة الأولى: 3:00 ص (6:00 ص بتوقيت السعودية)
+    # الدورة الثانية: 9:00 ص (12:00 ظهراً بتوقيت السعودية)
+    # الدورة الثالثة: 15:00 (3:00 عصراً UTC = 6:00 م بتوقيت السعودية)
+    # الدورة الرابعة: 21:00 (9:00 م UTC = 12:00 منتصف الليل بتوقيت السعودية)
+    - cron: '0 3,9,15,21 * * *'
 
 jobs:
   live:
     runs-on: ubuntu-latest
-    timeout-minutes: 340 # أقل من حد غيت هوب الأقصى (360 دقيقة) لتجنب الإيقاف الإجباري
+    timeout-minutes: 340 # أقل من حد غيت هوب الأقصى (360 دقيقة) لكل دورة
     permissions:
       contents: write
     steps:
@@ -78,9 +83,9 @@ jobs:
             exit 1
           fi
 
-      # --- 4. البث لمدة 5 ساعات مع تحسينات التوافق والصوت/الصورة ---
+      # --- 4. البث لمدة 5 ساعات بالضبط مع إعادة الاتصال التلقائي ---
       - name: Start Live Stream (5 Hours)
-        timeout-minutes: 295
+        timeout-minutes: 300 # يوقف البث تلقائياً بعد 5 ساعات تماماً
         run: |
           ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
           -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p" \
@@ -88,4 +93,5 @@ jobs:
           -g 60 -keyint_min 60 \
           -c:a aac -b:a 128k -ar 44100 -ac 2 \
           -flvflags no_duration_filesize \
+          -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 \
           -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}" || true
