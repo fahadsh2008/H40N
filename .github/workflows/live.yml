@@ -78,14 +78,14 @@ jobs:
             exit 1
           fi
 
-      # --- 4. البث لمدة 5 ساعات مع حماية من التعليق ---
+      # --- 4. البث لمدة 5 ساعات مع تحسينات التوافق والصوت/الصورة ---
       - name: Start Live Stream (5 Hours)
         timeout-minutes: 295
         run: |
           ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
-          -vf "scale=1280:720,fps=30" \
+          -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p" \
           -c:v libx264 -preset ultrafast -b:v 2500k -maxrate 2800k -bufsize 5600k \
-          -pix_fmt yuv420p -g 60 -keyint_min 60 \
+          -g 60 -keyint_min 60 \
           -c:a aac -b:a 128k -ar 44100 -ac 2 \
           -flvflags no_duration_filesize \
           -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}" || true
