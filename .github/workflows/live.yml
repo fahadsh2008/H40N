@@ -17,7 +17,7 @@ on:
 jobs:
   live:
     runs-on: ubuntu-latest
-    timeout-minutes: 320 # مهلة إجمالية للوظيفة لمنع التعليق
+    timeout-minutes: 350
     permissions:
       contents: write
     steps:
@@ -60,15 +60,17 @@ jobs:
             echo "playlist.txt not found or empty!"
           fi
 
-      # --- 2. تنزيل الفيديوهات من Release ---
+      # --- 2. تنزيل الفيديوهات من Release مع التحقق ---
       - name: Download All Assets from Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p videos
           gh release download --dir videos --pattern '*' --repo fahadsh2008/H40N || true
+          echo "=== Downloaded Files List ==="
+          ls -lh videos/
 
-      # --- 3. إعداد القائمة المحلية ---
+      # --- 3. إعداد وقراءة القائمة المحلية مع الفحص ---
       - name: Prepare Playlist
         run: |
           rm -f local_playlist.txt
@@ -90,22 +92,25 @@ jobs:
             echo "Error: playlist.txt does not exist!"
             exit 1
           fi
+          
+          echo "=== Local Playlist Content ==="
+          cat local_playlist.txt
+          if [ ! -s local_playlist.txt ]; then
+            echo "Error: local_playlist.txt is empty!"
+            exit 1
+          fi
 
       # --- 4. البث لمدة 5 ساعات مع الإنهاء الجبري التلقائي ---
       - name: Start Live Stream (5 Hours)
         run: |
-          # إنهاء إضافي للتأكد من نظافة المنفذ قبل البدء الفعلي
           pkill -9 ffmpeg || true
           
-          # تشغيل البث مع تحديد مهلة صارمة بـ 300 دقيقة (5 ساعات) ثم القتل الإجباري
           timeout 300m ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
           -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p" \
           -c:v libx264 -preset ultrafast -b:v 2500k -maxrate 2800k -bufsize 5600k \
           -g 60 -keyint_min 60 \
           -c:a aac -b:a 128k -ar 44100 -ac 2 \
           -flvflags no_duration_filesize \
-          -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 \
           -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}" || true
           
-          # إغلاق إجباري نهائي للتأكد من تفريغ الموارد
           pkill -9 ffmpeg || true
