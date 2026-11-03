@@ -1,28 +1,26 @@
-name: YouTube Live Stream 4 Sessions (5h each)
+name: live
 
 concurrency:
-  group: youtube-live-stream
-  cancel-in-progress: true
+  group: youtube-live-stream-continuous
+  cancel-in-progress: false
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 3,9,15,21 * * *'
 
 jobs:
   live:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
     permissions:
       contents: write
+      actions: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Install FFmpeg
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Install FFmpeg & GitHub CLI
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg gh
 
       - name: Force Kill Any Existing FFmpeg
         run: |
@@ -81,14 +79,16 @@ jobs:
             exit 1
           fi
 
-      - name: Start Live Stream with Auto-Reconnect Loop
+      - name: Start Stream Loop with 10-Minute Delay Auto-Restart
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pkill -9 ffmpeg || true
           
-          # حلقة تكرار لإعادة تشغيل البث تلقائياً في حال انقطاعه المفاجئ
+          # حلقة تكرار داخلية سريعة لإعادة الاتصال خلال 5 ثوانٍ لو حدث انقطاع بسيط من يوتيوب
           while true; do
-            echo "Starting FFmpeg stream..."
-            timeout 300m ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
+            echo "Starting FFmpeg stream session..."
+            ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
             -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p" \
             -c:v libx264 -preset ultrafast -b:v 2500k -maxrate 2800k -bufsize 5600k \
             -g 60 -keyint_min 60 \
@@ -96,7 +96,16 @@ jobs:
             -flvflags no_duration_filesize \
             -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}" || true
             
-            echo "FFmpeg stopped or disconnected. Restarting in 5 seconds..."
+            echo "Stream disconnected. Reconnecting in 5 seconds..."
             pkill -9 ffmpeg || true
             sleep 5
-          done
+          done &
+          
+          # مراقب للخروج النهائي: إذا توقفت المهمة تماماً لأي سبب، ينتظر 10 دقائق (600 ثانية) ثم يطلق نسخة جديدة
+          pid=$!
+          wait $pid || true
+          
+          echo "Job stopped. Waiting 10 minutes before triggering a fresh workflow instance..."
+          sleep 600
+          
+          gh workflow run "${{ github.workflow }}" --repo "${{ github.repository }}" || true
