@@ -2,16 +2,11 @@ name: YouTube Live Stream 4 Sessions (5h each)
 
 concurrency:
   group: youtube-live-stream
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 on:
   workflow_dispatch:
   schedule:
-    # الأوقات بتوقيت UTC (توقيت السعودية ناقص 3 ساعات):
-    # الدورة الأولى: 6:00 ص بتوقيت السعودية (3:00 ص UTC)
-    # الدورة الثانية: 12:00 ظهراً بتوقيت السعودية (9:00 ص UTC)
-    # الدورة الثالثة: 6:00 م بتوقيت السعودية (15:00 UTC)
-    # الدورة الرابعة: 12:00 منتصف الليل بتوقيت السعودية (21:00 UTC)
     - cron: '0 3,9,15,21 * * *'
 
 jobs:
@@ -29,15 +24,12 @@ jobs:
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
 
-      # --- 0. الإنهاء الجبري لأي عمليات سابقه معلقة ---
       - name: Force Kill Any Existing FFmpeg
         run: |
-          echo "Checking and killing any lingering ffmpeg processes..."
           pkill -9 ffmpeg || true
           killall -9 ffmpeg || true
           sleep 2
 
-      # --- 1. تدوير قائمة التشغيل بصورة آمنة ---
       - name: Rotate Playlist (Move first video to end)
         run: |
           if [ -f playlist.txt ] && [ -s playlist.txt ]; then
@@ -60,17 +52,13 @@ jobs:
             echo "playlist.txt not found or empty!"
           fi
 
-      # --- 2. تنزيل الفيديوهات من Release مع التحقق ---
       - name: Download All Assets from Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p videos
           gh release download --dir videos --pattern '*' --repo fahadsh2008/H40N || true
-          echo "=== Downloaded Files List ==="
-          ls -lh videos/
 
-      # --- 3. إعداد وقراءة القائمة المحلية مع الفحص ---
       - name: Prepare Playlist
         run: |
           rm -f local_playlist.txt
@@ -92,25 +80,23 @@ jobs:
             echo "Error: playlist.txt does not exist!"
             exit 1
           fi
-          
-          echo "=== Local Playlist Content ==="
-          cat local_playlist.txt
-          if [ ! -s local_playlist.txt ]; then
-            echo "Error: local_playlist.txt is empty!"
-            exit 1
-          fi
 
-      # --- 4. البث لمدة 5 ساعات مع الإنهاء الجبري التلقائي ---
-      - name: Start Live Stream (5 Hours)
+      - name: Start Live Stream with Auto-Reconnect Loop
         run: |
           pkill -9 ffmpeg || true
           
-          timeout 300m ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
-          -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p" \
-          -c:v libx264 -preset ultrafast -b:v 2500k -maxrate 2800k -bufsize 5600k \
-          -g 60 -keyint_min 60 \
-          -c:a aac -b:a 128k -ar 44100 -ac 2 \
-          -flvflags no_duration_filesize \
-          -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}" || true
-          
-          pkill -9 ffmpeg || true
+          # حلقة تكرار لإعادة تشغيل البث تلقائياً في حال انقطاعه المفاجئ
+          while true; do
+            echo "Starting FFmpeg stream..."
+            timeout 300m ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
+            -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p" \
+            -c:v libx264 -preset ultrafast -b:v 2500k -maxrate 2800k -bufsize 5600k \
+            -g 60 -keyint_min 60 \
+            -c:a aac -b:a 128k -ar 44100 -ac 2 \
+            -flvflags no_duration_filesize \
+            -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}" || true
+            
+            echo "FFmpeg stopped or disconnected. Restarting in 5 seconds..."
+            pkill -9 ffmpeg || true
+            sleep 5
+          done
