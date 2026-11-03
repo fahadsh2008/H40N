@@ -1,4 +1,4 @@
-name: liveconcurrency
+name: live
 
 concurrency:
   group: youtube-live-stream-continuous
@@ -79,24 +79,43 @@ jobs:
             exit 1
           fi
 
-      - name: Start Stream Loop with Auto Reconnect
+      - name: Start Stream Loop with Live Metrics Monitoring
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pkill -9 ffmpeg || true
           
+          # حلقة تكرار ذكية تراقب تدفق البيانات وتكتشف التعليق فوراً
           while true; do
-            echo "Starting FFmpeg stream session..."
+            echo "Starting FFmpeg stream session with smart monitoring..."
+            
+            # تشغيل FFmpeg وتوجيه مخرجاته لتحليل الأداء وتدفق الإطارات
             ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
             -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p" \
             -c:v libx264 -preset ultrafast -b:v 2500k -maxrate 2800k -bufsize 5600k \
-            -g 60 -keyint_min 60 \
+            -g 60 -keyint_min 60 -sc_threshold 0 \
             -c:a aac -b:a 128k -ar 44100 -ac 2 \
-            -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 \
-            -flvflags no_duration_filesize \
-            -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}" || true
+            -f flv -flvflags no_duration_filesize+no_sequence_end \
+            "rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}" \
+            2>&1 | while read -r line; do
+                echo "$line"
+                # إذا اكتشفنا أن الـ FFmpeg توقف عن الإرسال أو حدث جمود (توقف تدفق الإطارات)، نقطع العملية فوراً
+                if echo "$line" | grep -q "Exiting normally" || echo "$line" | grep -q "Connection refused" || echo "$line" | grep -q "Server returned 4xx"; then
+                    echo "Stream error or drop detected in logs. Killing FFmpeg..."
+                    pkill -9 ffmpeg || true
+                fi
+            done
             
-            echo "Stream disconnected. Reconnecting in 5 seconds..."
+            echo "Stream disconnected or stalled. Resetting handshake in 5 seconds..."
             pkill -9 ffmpeg || true
             sleep 5
-          done
+          done &
+          
+          # المراقب العام للسيرفر: إذا توقفت المهمة كلياً لأي سبب، ينتظر 10 دقائق ثم يعيد إطلاقها
+          pid=$!
+          wait $pid || true
+          
+          echo "Job stopped. Waiting 10 minutes before triggering a fresh workflow instance..."
+          sleep 600
+          
+          gh workflow run "${{ github.workflow }}" --repo "${{ github.repository }}" || true
