@@ -74,6 +74,9 @@ jobs:
                 fi
               fi
             done < playlist.txt
+            
+            echo "Generated local_playlist.txt contents:"
+            cat local_playlist.txt
           else
             echo "Error: playlist.txt does not exist!"
             exit 1
@@ -82,40 +85,35 @@ jobs:
       - name: Start Stream Loop with Live Metrics Monitoring
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STREAM_KEY: ${{ secrets.STREAM_KEY }}
         run: |
+          if [ -z "$STREAM_KEY" ]; then
+            echo "Error: STREAM_KEY secret is missing!"
+            exit 1
+          fi
+
           pkill -9 ffmpeg || true
           
-          # حلقة تكرار ذكية تراقب تدفق البيانات وتكتشف التعليق فوراً
+          # حلقة تكرار مستقرة وآمنة للمراقبة دون تعليق الـ Pipes
           while true; do
-            echo "Starting FFmpeg stream session with smart monitoring..."
+            echo "Starting FFmpeg stream session..."
             
-            # تشغيل FFmpeg وتوجيه مخرجاته لتحليل الأداء وتدفق الإطارات
             ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
-            -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p" \
-            -c:v libx264 -preset ultrafast -b:v 2500k -maxrate 2800k -bufsize 5600k \
-            -g 60 -keyint_min 60 -sc_threshold 0 \
-            -c:a aac -b:a 128k -ar 44100 -ac 2 \
-            -f flv -flvflags no_duration_filesize+no_sequence_end \
-            "rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}" \
-            2>&1 | while read -r line; do
-                echo "$line"
-                # إذا اكتشفنا أن الـ FFmpeg توقف عن الإرسال أو حدث جمود (توقف تدفق الإطارات)، نقطع العملية فوراً
-                if echo "$line" | grep -q "Exiting normally" || echo "$line" | grep -q "Connection refused" || echo "$line" | grep -q "Server returned 4xx"; then
-                    echo "Stream error or drop detected in logs. Killing FFmpeg..."
-                    pkill -9 ffmpeg || true
-                fi
+              -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p" \
+              -c:v libx264 -preset ultrafast -b:v 2500k -maxrate 2800k -bufsize 5600k \
+              -g 60 -keyint_min 60 -sc_threshold 0 \
+              -c:a aac -b:a 128k -ar 44100 -ac 2 \
+              -f flv -flvflags no_duration_filesize+no_sequence_end \
+              "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY" &
+            
+            FFMPEG_PID=$!
+            echo "FFmpeg running with PID $FFMPEG_PID"
+            
+            # مراقبة عملية FFmpeg كل 10 ثوانٍ للتأكد من أنها تعمل
+            while kill -0 $FFMPEG_PID 2>/dev/null; do
+              sleep 10
             done
             
-            echo "Stream disconnected or stalled. Resetting handshake in 5 seconds..."
-            pkill -9 ffmpeg || true
+            echo "FFmpeg process died. Restarting stream loop in 5 seconds..."
             sleep 5
-          done &
-          
-          # المراقب العام للسيرفر: إذا توقفت المهمة كلياً لأي سبب، ينتظر 10 دقائق ثم يعيد إطلاقها
-          pid=$!
-          wait $pid || true
-          
-          echo "Job stopped. Waiting 10 minutes before triggering a fresh workflow instance..."
-          sleep 600
-          
-          gh workflow run "${{ github.workflow }}" --repo "${{ github.repository }}" || true
+          done
