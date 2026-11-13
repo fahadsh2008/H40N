@@ -7,7 +7,7 @@ concurrency:
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */6 * * *' # يعمل تلقائياً كل 6 ساعات لبدء الدورة الكبرى
+    - cron: '0 */6 * * *'
 
 jobs:
   live:
@@ -37,13 +37,11 @@ jobs:
           mkdir -p videos
           gh release download --dir videos --pattern '*' --repo fahadsh2008/H40N || true
 
-      # --- تشغيل البث في دورات (ساعة بث + تدوير القائمة + 5 دقائق راحة) × 5 مرات ---
       - name: Start Live Stream Loop with Playlist Rotation
         run: |
           for i in {1..5}; do
             echo "=== بدء الدورة رقم $i: تجهيز القائمة المحلية ==="
             
-            # 1. إعداد القائمة المحلية بناءً على الترتيب الحالي لملف playlist.txt
             rm -f local_playlist.txt
             sed -i 's/\r$//' playlist.txt
             
@@ -59,17 +57,16 @@ jobs:
               fi
             done < playlist.txt
 
-            # 2. بدء البث لمدة 60 دقيقة
-            echo "=== جاري البث لمدة 60 دقيقة للدورة $i ==="
+            echo "=== محتوى local_playlist.txt المعدل ==="
+            cat local_playlist.txt
+
+            echo "=== جاري بدء بث FFmpeg للدورة $i ==="
             timeout -s INT 60m ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
-            -c:v libx264 -preset ultrafast -b:v 2500k -maxrate 2500k -bufsize 5000k \
+            -c:v libx264 -preset veryfast -b:v 2500k -maxrate 2500k -bufsize 5000k \
             -pix_fmt yuv420p -g 60 -keyint_min 60 -r 30 \
             -c:a aac -b:a 128k -ar 44100 -ac 2 \
-            -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 10 \
-            -timeout 30000000 \
             -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}" || true
 
-            # 3. تدوير القائمة (نقل الفيديو الأول إلى النهاية وحفظه في المستودع)
             echo "=== انتهت الساعة، جاري تدوير القائمة للفيديو التالي ==="
             if [ -s playlist.txt ]; then
               first_line=$(head -n 1 playlist.txt | tr -d '\r')
@@ -83,7 +80,6 @@ jobs:
               git push origin HEAD:main || echo "Push failed or not needed"
             fi
 
-            # 4. توقف مؤقت 5 دقائق قبل الدورة التالية (نتخطاه في الدورة الخامسة)
             if [ $i -lt 5 ]; then
               echo "=== استراحة لمدة 5 دقائق قبل الساعة التالية... ==="
               sleep 300
