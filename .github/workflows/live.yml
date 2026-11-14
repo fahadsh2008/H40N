@@ -2,19 +2,20 @@ name: YouTube Live Stream
 
 concurrency:
   group: youtube-live-stream
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: '0 */5 * * *'
 
 jobs:
   live:
     runs-on: ubuntu-latest
-    timeout-minutes: 345
+    timeout-minutes: 290
     permissions:
       contents: write
+      actions: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -39,7 +40,7 @@ jobs:
 
       - name: Start Live Stream Loop with Playlist Rotation
         run: |
-          for i in {1..5}; do
+          for i in {1..4}; do
             echo "=== بدء الدورة رقم $i: تجهيز القائمة المحلية ==="
             
             rm -f local_playlist.txt
@@ -56,9 +57,6 @@ jobs:
                 fi
               fi
             done < playlist.txt
-
-            echo "=== محتوى local_playlist.txt المعدل ==="
-            cat local_playlist.txt
 
             echo "=== جاري بدء بث FFmpeg للدورة $i ==="
             timeout -s INT 60m ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
@@ -80,9 +78,14 @@ jobs:
               git push origin HEAD:main || echo "Push failed or not needed"
             fi
 
-            if [ $i -lt 5 ]; then
-              echo "=== استراحة لمدة 5 دقائق قبل الساعة التالية... ==="
-              sleep 300
-            fi
+            echo "=== استراحة لمدة 10 دقائق... ==="
+            sleep 600
           done
-          echo "=== اكتملت جميع الدورات الخمس بنجاح ==="
+
+      - name: Trigger Next Run Automatically
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "=== إرسال أمر بدء التشغيل التلقائي للدورة الجديدة ==="
+          gh workflow run "${{ github.workflow }}" --repo ${{ github.repository }} || true
