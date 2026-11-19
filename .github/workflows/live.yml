@@ -1,76 +1,24 @@
-name: YouTube Live Stream
+name: Stream to OneStream Live
 
+on:
+  workflow_dispatch:
 
+jobs:
+  stream:
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Install FFmpeg
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
-      - name: Configure Git User
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
-
-      - name: Download All Assets from Release
+      - name: Start Stream
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ONESTREAM_URL: ${{ secrets.ONESTREAM_URL }}
+          ONESTREAM_KEY: ${{ secrets.ONESTREAM_KEY }}
         run: |
-          mkdir -p videos
-          gh release download --dir videos --pattern '*' --repo fahadsh2008/H40N || true
-
-      - name: Start Live Stream Loop with Playlist Rotation
-        run: |
-          for i in {1..4}; do
-            echo "=== بدء الدورة رقم $i: تجهيز القائمة المحلية ==="
-            
-            rm -f local_playlist.txt
-            sed -i 's/\r$//' playlist.txt
-            
-            while IFS= read -r line || [[ -n "$line" ]]; do
-              [ -z "$line" ] && continue
-              if [[ "$line" =~ ^file ]]; then
-                filename=$(echo "$line" | sed "s/file '\(.*\)'/\1/" | xargs basename)
-                if [ -f "videos/$filename" ]; then
-                  echo "file 'videos/$filename'" >> local_playlist.txt
-                elif [ -f "$filename" ]; then
-                  echo "file '$filename'" >> local_playlist.txt
-                fi
-              fi
-            done < playlist.txt
-
-            echo "=== جاري بدء بث FFmpeg للدورة $i ==="
-            timeout -s INT 60m ffmpeg -re -stream_loop -1 -f concat -safe 0 -i local_playlist.txt \
-            -c:v libx264 -preset veryfast -b:v 2500k -maxrate 2500k -bufsize 5000k \
-            -pix_fmt yuv420p -g 60 -keyint_min 60 -r 30 \
-            -c:a aac -b:a 128k -ar 44100 -ac 2 \
-            -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.STREAM_KEY }}" || true
-
-            echo "=== انتهت الساعة، جاري تدوير القائمة للفيديو التالي ==="
-            if [ -s playlist.txt ]; then
-              first_line=$(head -n 1 playlist.txt | tr -d '\r')
-              tail -n +2 playlist.txt | grep -v '^$' > temp_playlist.txt
-              echo "$first_line" >> temp_playlist.txt
-              mv temp_playlist.txt playlist.txt
-              
-              git pull origin main --rebase || true
-              git add playlist.txt
-              git commit -m "Auto-rotate playlist after hour $i" || echo "No changes to commit"
-              git push origin HEAD:main || echo "Push failed or not needed"
-            fi
-
-            echo "=== استراحة لمدة 10 دقائق... ==="
-            sleep 600
-          done
-
-      - name: Trigger Next Run Automatically
-        if: always()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "=== إرسال أمر بدء التشغيل التلقائي للدورة الجديدة ==="
-          gh workflow run "${{ github.workflow }}" --repo ${{ github.repository }} || true
+          ffmpeg -re -stream_loop -1 -i "video.mp4" \
+          -c:v libx264 -preset veryfast -b:v 3000k -maxrate 3000k -bufsize 6000k \
+          -pix_fmt yuv420p -g 60 -c:a aac -b:a 128k -ar 44100 \
+          -f flv "${ONESTREAM_URL}/${ONESTREAM_KEY}"
